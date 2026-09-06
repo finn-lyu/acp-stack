@@ -25,7 +25,9 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         ArchiveTooLarge { limit } => {
             format!("archive extracted output exceeded the {limit}-byte size limit")
         }
-        ArchiveReadFailed { reason } => format!("archive read failed: {reason}"),
+        // Reasons name archive and destination paths plus I/O sources at the
+        // call sites, so the public surface stays static.
+        ArchiveReadFailed { .. } => "archive read failed".to_owned(),
         _ => return None,
     })
 }

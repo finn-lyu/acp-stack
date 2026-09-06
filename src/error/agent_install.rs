@@ -75,8 +75,9 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         AgentInstallerCreatesMissing { name } => {
             format!("agent installer ran but `creates = {name}` did not resolve afterwards")
         }
-        AgentInstallerBinaryUnrunnable { source, .. } => {
-            format!("agent installer produced a binary that cannot be spawned on this host: {source}")
+        // The I/O source embeds the binary path; the public surface stays static.
+        AgentInstallerBinaryUnrunnable { .. } => {
+            "agent installer produced a binary that cannot be spawned on this host".to_owned()
         }
         AgentInstallerPrerequisitesMissing {
             agent_id,
@@ -92,14 +93,14 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         AgentInstallerWorkingDirectoryMissing { .. } => {
             "agent installer workspace root is not an existing directory".to_owned()
         }
-        AgentInstallerLogPersist { path, .. } => {
-            format!("failed to persist installer log at {}", path.display())
-        }
+        AgentInstallerLogPersist { .. } => "failed to persist the installer log".to_owned(),
         AgentRegistryMissing { id } => format!("ACP registry does not contain agent `{id}`"),
         AgentPlaceholderConfigured => {
             "config has legacy placeholder agent; select a real supported agent before starting the runtime".to_owned()
         }
-        InitRunCorrupted { reason } => format!("init run state is corrupted: {reason}"),
+        // Reasons can embed serde errors echoing recorded init args (which hold
+        // local paths), so the public surface stays static.
+        InitRunCorrupted { .. } => "init run state is corrupted".to_owned(),
         // The raw panic message can carry local diagnostics, so the public
         // surface names only the step.
         InitStepPanicked { kind, .. } => format!("init step `{kind}` failed unexpectedly"),
@@ -120,7 +121,8 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         AgentCheckStale => {
             "one or more managed agent components are stale or missing; re-run `acps agent install` to upgrade".to_owned()
         }
-        RegistryLoad { reason } => format!("agent registry could not be loaded: {reason}"),
+        // Reasons name override-file paths and I/O sources at the call sites.
+        RegistryLoad { .. } => "agent registry could not be loaded".to_owned(),
         SkillInstallInvalidSource { source_id } => format!("invalid skill source `{source_id}`"),
         SkillInstallSourceMissing { source_id } => {
             format!("skill source `{source_id}` is not available")
@@ -129,10 +131,12 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         SkillInstallSkillMissing { source_id, skill } => {
             format!("skill `{skill}` was not found in source `{source_id}`")
         }
-        SkillInstallTargetConflict { path, reason } => {
-            format!("skill install target conflict at {}: {reason}", path.display())
+        // The conflict reasons are static phrases; the target path stays out.
+        SkillInstallTargetConflict { reason, .. } => {
+            format!("skill install target conflict: {reason}")
         }
-        SkillInstallFailed { reason } => format!("skill install failed: {reason}"),
+        // Reasons name skill paths and I/O sources at the call sites.
+        SkillInstallFailed { .. } => "skill install failed".to_owned(),
         SkillNotInstalled { skill } => format!("skill `{skill}` is not installed"),
         SkillSourceNotConfigured { alias } => {
             format!("skill source `{alias}` is not configured")
@@ -163,8 +167,9 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         } => format!(
             "{matches} release assets for {repo} matched pattern `{pattern}`; expected exactly one"
         ),
-        GithubReleaseArchiveExtract { repo, reason } => {
-            format!("failed to extract release archive from {repo}: {reason}")
+        // Reasons name destination paths and I/O sources at the call sites.
+        GithubReleaseArchiveExtract { repo, .. } => {
+            format!("failed to extract release archive from {repo}")
         }
         GithubReleaseChecksumMismatch {
             repo,

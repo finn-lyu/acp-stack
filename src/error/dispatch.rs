@@ -30,8 +30,11 @@ impl StackError {
             .expect("StackError variant should be claimed by exactly one error domain")
     }
 
-    /// Message safe to expose through the public HTTP API: no local paths, OS
-    /// errors, or secret-store metadata. `Display` stays detailed for the CLI.
+    /// Message safe to expose through the public HTTP API. It may interpolate
+    /// identifiers (field names, provider/session/prompt IDs, secret ref names,
+    /// codes) but never local filesystem paths, OS or I/O error text,
+    /// subprocess argv, or subprocess stderr/stdout. `Display` stays detailed
+    /// for the CLI.
     pub fn public_message(&self) -> String {
         config::public_message(self)
             .or_else(|| state::public_message(self))

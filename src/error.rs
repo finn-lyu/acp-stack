@@ -789,7 +789,9 @@ pub enum StackError {
     CommandTimeout,
 
     // === secrets: ref-shape validation ===
-    #[error("secret ref name `{name}` is invalid; use ASCII letters, digits, and underscores")]
+    #[error(
+        "secret ref name `{name}` is invalid; use ASCII letters, digits, and underscores, and do not start with a digit"
+    )]
     InvalidSecretRefName { name: String },
 
     #[error("secret ref name `{name}` is declared more than once across the config")]

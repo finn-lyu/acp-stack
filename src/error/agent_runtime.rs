@@ -38,7 +38,9 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         AgentSpawnFailed { .. } => "failed to spawn agent subprocess".to_owned(),
         AgentAlreadyRunning => "agent is already running".to_owned(),
         AgentNotRunning => "agent is not running".to_owned(),
-        AgentInitializeFailed { reason } => format!("agent failed to initialize: {reason}"),
+        // Reasons are built from join errors, I/O sources, and subprocess-derived
+        // text at the call sites, so the public surface stays static.
+        AgentInitializeFailed { .. } => "agent failed to initialize".to_owned(),
         AgentNotInitialized => "agent has not been initialized yet".to_owned(),
         AgentUnsupportedCapability { name } => format!("agent does not support `{name}`"),
         AgentApiRequest { path, .. } => format!("agent API request to {path} failed"),
@@ -50,7 +52,9 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
             status_code,
             reason_category,
         } => format!("inference endpoint returned {status_code} ({reason_category})"),
-        AgentTestFailed { stage, reason, .. } => format!("agent test failed at {stage}: {reason}"),
+        // `reason` embeds workspace paths and spawn argv (see the enum doc);
+        // the stage name is the identifier the API may carry.
+        AgentTestFailed { stage, .. } => format!("agent test failed at {stage}"),
         AgentSwitchConflict { reason } => format!("agent switch conflict: {reason}"),
         // The on-disk path stays out of the public message; Display carries it
         // for local logs only.

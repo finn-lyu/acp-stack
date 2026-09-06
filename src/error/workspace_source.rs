@@ -2,7 +2,7 @@
 
 use http::StatusCode;
 
-use super::{StackError, workspace_command_failed_message};
+use super::StackError;
 
 pub(super) fn error_code(err: &StackError) -> Option<&'static str> {
     use StackError::*;
@@ -20,29 +20,32 @@ pub(super) fn error_code(err: &StackError) -> Option<&'static str> {
 pub(super) fn public_message(err: &StackError) -> Option<String> {
     use StackError::*;
     Some(match err {
-        WorkspaceCodeSourceInvalid { index, reason } => {
-            format!("workspace.code_sources[{index}]: {reason}")
+        // Reasons can carry operator-declared local paths and I/O error text
+        // from the source validators, so the public surface names only the field.
+        WorkspaceCodeSourceInvalid { index, .. } => {
+            format!("workspace.code_sources[{index}] is invalid")
         }
-        WorkspaceDataSourceInvalid { index, reason } => {
-            format!("workspace.data_sources[{index}]: {reason}")
+        WorkspaceDataSourceInvalid { index, .. } => {
+            format!("workspace.data_sources[{index}] is invalid")
         }
         WorkspaceUploadsNotUnderRoot => {
             "workspace.uploads must be inside workspace.root".to_owned()
         }
-        WorkspaceDestinationNotEmpty { dest } => {
-            format!("workspace destination `{dest}` is not empty")
+        WorkspaceDestinationNotEmpty { .. } => {
+            "workspace destination is not empty and is not a known acp-stack source directory"
+                .to_owned()
         }
-        WorkspaceDestinationOutsideRoot { dest, root } => {
-            format!("workspace destination `{dest}` is outside workspace.root `{root}`")
+        WorkspaceDestinationOutsideRoot { .. } => {
+            "workspace destination is outside workspace.root".to_owned()
         }
-        WorkspaceMaterializeFailed { reason } => {
-            format!("workspace materialization failed: {reason}")
-        }
-        WorkspaceCommandFailed {
-            command,
-            exit,
-            stderr_tail,
-        } => workspace_command_failed_message(command, *exit, stderr_tail),
+        // Reasons name destination paths and I/O sources at the call sites.
+        WorkspaceMaterializeFailed { .. } => "workspace materialization failed".to_owned(),
+        // `stderr_tail` is raw subprocess output; the command label and exit
+        // status are the identifiers the API may carry.
+        WorkspaceCommandFailed { command, exit, .. } => match exit {
+            Some(code) => format!("`{command}` exited with status {code}"),
+            None => format!("`{command}` exited without a status"),
+        },
         _ => return None,
     })
 }

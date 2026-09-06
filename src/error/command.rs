@@ -22,8 +22,8 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
     Some(match err {
         CommandNotFound { id } => format!("command `{id}` was not found"),
         CommandDenied { reason } => format!("command rejected by policy: {reason}"),
-        CommandCwdOutsideWorkspace { requested } => {
-            format!("command cwd `{requested}` resolves outside the workspace root")
+        CommandCwdOutsideWorkspace { .. } => {
+            "command cwd resolves outside the workspace root".to_owned()
         }
         CommandEnvNotAllowed { name } => {
             format!("command env variable `{name}` is not on commands.env_allowlist")

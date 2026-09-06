@@ -64,8 +64,9 @@ Errors carry a machine-readable `code`, a human-readable `message`, and structur
 
 Public error text is sanitized:
 
+- Error messages interpolate identifiers only, such as field names, provider, session, and prompt ids, secret ref names, machine codes, the caller's own workspace-relative paths, and download URLs reduced to scheme, host, and path with userinfo, query, and fragment stripped. Local filesystem paths, OS and I/O error text, subprocess argv, and subprocess output stay in local logs and never appear in the envelope.
 - Cross-field validation errors name the offending field but never echo its value.
-- Secret positions carrying pasted-credential shapes are rejected without echoing the value.
+- Secret positions carrying pasted-credential shapes are rejected without echoing the value. An invalid secret ref name is reported without quoting the offending name, since a pasted inline credential fails the same name check.
 - The `agent.inference_*` prompt codes use the fixed message form `"inference endpoint returned <status_code> (<reason_category>)"`. No URLs, request/response bodies, headers, or secret material reach the API response or the persisted prompt row.
 
 Route-specific codes are listed per route in the [Endpoint reference](endpoints.md), including the prompt-path error table.

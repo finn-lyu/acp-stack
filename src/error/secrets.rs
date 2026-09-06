@@ -44,7 +44,11 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         ProviderCredentialRollbackFailed { .. } => {
             "provider credential change failed and could not be rolled back".to_owned()
         }
-        InvalidSecretRefName { name } => format!("secret ref name `{name}` is invalid"),
+        // A pasted inline credential fails this same check, so the offending
+        // name is never echoed; `Display` keeps it for the local CLI only.
+        InvalidSecretRefName { .. } => {
+            "a secret ref name is invalid; use ASCII letters, digits, and underscores, and do not start with a digit".to_owned()
+        }
         DuplicateSecretRef { name } => {
             format!("secret ref `{name}` is declared more than once")
         }

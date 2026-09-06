@@ -4,8 +4,10 @@ use http::StatusCode;
 
 use super::StackError;
 
-/// `Display` body for `WorkspaceCommandFailed`, shared with the `workspace_source` domain's
-/// public message so the two renderings cannot drift.
+/// `Display` body for `WorkspaceCommandFailed`. The `workspace_source` domain's
+/// public message renders the same variant without `stderr_tail`: raw
+/// subprocess output stays in this local-only rendering and never crosses the
+/// API boundary, so the two renderings diverge by design.
 pub(super) fn workspace_command_failed_message(
     command: &str,
     exit: Option<i32>,
@@ -38,6 +40,8 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         WorkspaceSymlinkEscape { .. } => {
             "workspace path resolves outside the workspace root".to_owned()
         }
+        // `requested` is the caller's own workspace-relative input (or the
+        // relative rendering of a resolved target), never a host path.
         WorkspaceNotFound { requested } => format!("workspace path `{requested}` was not found"),
         WorkspaceParentNotFound { requested } => {
             format!("workspace parent directory for `{requested}` was not found")
