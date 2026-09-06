@@ -166,7 +166,7 @@ pub fn apply(
     }
     let DesiredState::ProviderCredential { selection } = request.desired;
     let selection = selection
-        .map(|selection| resolve_selection(home, store, config, selection))
+        .map(|selection| resolve_selection(home, store, config, namespace, selection))
         .transpose()?;
     let outcome = store.apply_managed_state_credential(
         namespace,
@@ -214,7 +214,7 @@ where
         revision,
         |store| {
             selection
-                .map(|selection| resolve_selection(home, store, config, selection))
+                .map(|selection| resolve_selection(home, store, config, namespace, selection))
                 .transpose()
         },
     )?;
@@ -240,6 +240,7 @@ fn resolve_selection(
     home: &Path,
     store: &SecretStore,
     config: &Config,
+    namespace: &str,
     selection: CredentialSelection,
 ) -> Result<ManagedCredentialSelection> {
     validate_bounded(
@@ -328,7 +329,7 @@ fn resolve_selection(
         validate_base_url(base_url)?;
         require_agent_supports_base_url(home, config)?;
         require_provider_accepts_base_url(config, &selection.provider_id)?;
-        require_single_endpoint_override(store, &selection.provider_id)?;
+        require_single_endpoint_override(store, namespace, &selection.provider_id)?;
     }
     Ok(ManagedCredentialSelection {
         provider_id: selection.provider_id,
@@ -425,14 +426,23 @@ fn require_provider_accepts_base_url(config: &Config, provider_id: &str) -> Resu
 /// different provider would have provisioning arbitrarily pick a winner.
 /// Rejecting here — before any watermark or catalog persist — keeps the
 /// revision reusable once the first namespace's endpoint is cleared.
-fn require_single_endpoint_override(store: &SecretStore, provider_id: &str) -> Result<()> {
+///
+/// The applying namespace's own rerouted credentials do not count against it:
+/// staging drops the namespace's previous provider before inserting the new
+/// one, so a namespace switching itself from one rerouted provider to another
+/// still leaves exactly one override standing.
+fn require_single_endpoint_override(
+    store: &SecretStore,
+    namespace: &str,
+    provider_id: &str,
+) -> Result<()> {
     for (existing_id, set) in store.provider_credentials() {
         if existing_id == provider_id {
             continue;
         }
         let carries_override = set.sole.as_ref().is_some_and(|credential| {
             credential.base_url.is_some()
-                && matches!(&credential.source, CredentialSource::External(_))
+                && matches!(&credential.source, CredentialSource::External(holder) if holder != namespace)
         });
         if carries_override {
             return Err(StackError::InvalidParam {

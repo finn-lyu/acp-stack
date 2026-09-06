@@ -1123,6 +1123,48 @@ async fn re_applying_an_endpoint_for_the_same_provider_is_allowed() {
     assert_eq!(body["data"]["outcome"], "applied");
 }
 
+/// The singleton rule counts only overrides held by other namespaces: an
+/// orchestrator switching its own namespace from one rerouted provider to
+/// another still leaves exactly one override standing, because staging drops
+/// the namespace's previous provider first.
+#[tokio::test]
+async fn switching_a_namespace_between_rerouted_providers_is_allowed() {
+    let harness = ServerHarness::spawn().await;
+    use_endpoint_capable_agent(&harness);
+    let base_url = "http://127.0.0.1:3129";
+    let response = harness
+        .post_apply(
+            NAMESPACE,
+            ADMIN_KEY,
+            apply_body(1, openai_selection_with_base_url("sk-a", base_url)),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = harness
+        .post_apply(
+            NAMESPACE,
+            ADMIN_KEY,
+            apply_body(2, openrouter_selection_with_base_url("sk-b", base_url)),
+        )
+        .await;
+    let status = response.status();
+    let body: Value = response.json().await.expect("envelope");
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["outcome"], "applied");
+
+    let store = harness.reopen_store();
+    assert!(
+        store.provider_credential_set("openai").is_none(),
+        "the replaced provider must leave the catalog"
+    );
+    let credential = store
+        .provider_credential_set("openrouter")
+        .and_then(|set| set.sole.as_ref())
+        .expect("openrouter credential");
+    assert_eq!(credential.base_url.as_deref(), Some(base_url));
+}
+
 /// An applied override changes where the provider's catalog is fetched from,
 /// so the cached listing for that provider must be dropped.
 #[tokio::test]
