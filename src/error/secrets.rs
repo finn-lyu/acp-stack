@@ -18,6 +18,7 @@ pub(super) fn error_code(err: &StackError) -> Option<&'static str> {
         | SecretStorePlaintextNotUtf8 { .. } => "secrets.plaintext_invalid",
         SecretNotFound { .. } => "secrets.not_found",
         ProviderCredentialRollbackFailed { .. } => "secrets.rollback_failed",
+        ProviderSecretNotPushDeliverable { .. } => "secrets.provider_secret_not_push_deliverable",
         InvalidSecretRefName { .. }
         | DuplicateSecretRef { .. }
         | SecretTemplateInvalid { .. }
@@ -44,6 +45,12 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         ProviderCredentialRollbackFailed { .. } => {
             "provider credential change failed and could not be rolled back".to_owned()
         }
+        ProviderSecretNotPushDeliverable {
+            provider_id,
+            env_ref,
+        } => format!(
+            "provider secret `{env_ref}` for provider `{provider_id}` is missing and cannot be delivered by the managed credential push"
+        ),
         // A pasted inline credential fails this same check, so the offending
         // name is never echoed; `Display` keeps it for the local CLI only.
         InvalidSecretRefName { .. } => {
@@ -81,7 +88,8 @@ pub(super) fn http_status(err: &StackError) -> Option<StatusCode> {
         InvalidSecretRefName { .. }
         | DuplicateSecretRef { .. }
         | SecretTemplateInvalid { .. }
-        | DuplicateEnvVarName { .. } => StatusCode::BAD_REQUEST,
+        | DuplicateEnvVarName { .. }
+        | ProviderSecretNotPushDeliverable { .. } => StatusCode::BAD_REQUEST,
         _ => return None,
     })
 }

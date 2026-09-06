@@ -397,3 +397,228 @@ fn download_public_messages_fall_back_when_url_is_missing_or_unparseable() {
         "download failed with HTTP status 502"
     );
 }
+
+// === domain coverage ===
+
+const ENUM_SOURCE: &str = include_str!("../error.rs");
+const DISPATCH_SOURCE: &str = include_str!("dispatch.rs");
+
+/// Every domain module `dispatch.rs` consults, paired with its source so the
+/// coverage test fails when a variant is added without a claiming arm.
+const DOMAIN_MODULES: &[(&str, &str)] = &[
+    ("config", include_str!("config.rs")),
+    ("state", include_str!("state.rs")),
+    ("security", include_str!("security.rs")),
+    ("secrets", include_str!("secrets.rs")),
+    ("supabase", include_str!("supabase.rs")),
+    ("edge", include_str!("edge.rs")),
+    ("extensions", include_str!("extensions.rs")),
+    ("workspace_source", include_str!("workspace_source.rs")),
+    ("download", include_str!("download.rs")),
+    ("archive", include_str!("archive.rs")),
+    ("serve", include_str!("serve.rs")),
+    ("agent_install", include_str!("agent_install.rs")),
+    ("agent_runtime", include_str!("agent_runtime.rs")),
+    ("session", include_str!("session.rs")),
+    ("workspace", include_str!("workspace.rs")),
+    ("command", include_str!("command.rs")),
+    ("permission", include_str!("permission.rs")),
+    ("auth_http", include_str!("auth_http.rs")),
+];
+
+const DISPATCH_FUNCTIONS: &[&str] = &["error_code", "public_message", "http_status"];
+
+/// Variants the dispatcher resolves before consulting any domain module.
+const DISPATCH_EARLY_RETURNS: &[(&str, &str)] =
+    &[("error_code", "NativeAgentConfigOperationFailed")];
+
+fn stack_error_variants() -> Vec<&'static str> {
+    let start = ENUM_SOURCE
+        .find("pub enum StackError {")
+        .expect("StackError enum declaration");
+    let body = &ENUM_SOURCE[start..];
+    let end = body.find("\n}\n").expect("StackError enum close");
+    body[..end]
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("    ")?;
+            if rest.starts_with(' ') || rest.starts_with('#') || rest.starts_with('/') {
+                return None;
+            }
+            let name_end = rest
+                .find(|c: char| !c.is_ascii_alphanumeric())
+                .unwrap_or(rest.len());
+            let name = &rest[..name_end];
+            let first = name.chars().next()?;
+            first.is_ascii_uppercase().then_some(name)
+        })
+        .collect()
+}
+
+fn function_body<'a>(source: &'a str, function: &str) -> &'a str {
+    let signature = format!("fn {function}(");
+    let start = source
+        .find(&signature)
+        .unwrap_or_else(|| panic!("domain module lacks `{signature}`"));
+    let body = &source[start..];
+    let end = body.find("\n}\n").unwrap_or(body.len());
+    &body[..end]
+}
+
+fn claimed_variants(body: &str, variants: &[&'static str]) -> Vec<&'static str> {
+    variants
+        .iter()
+        .copied()
+        .filter(|variant| {
+            body.match_indices(variant).any(|(index, _)| {
+                let before = body[..index].chars().next_back();
+                let after = body[index + variant.len()..].chars().next();
+                let boundary_before = before.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+                let boundary_after = after.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+                boundary_before && boundary_after
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn every_stack_error_variant_is_claimed_by_exactly_one_domain() {
+    let variants = stack_error_variants();
+    // thiserror requires one `#[error(...)]` per variant, so the attribute
+    // count anchors the line scanner against silently dropped declarations.
+    let error_attributes = ENUM_SOURCE
+        .lines()
+        .filter(|line| line.starts_with("    #[error"))
+        .count();
+    assert_eq!(
+        variants.len(),
+        error_attributes,
+        "variant scan dropped declarations: {} variants vs {error_attributes} #[error] attributes",
+        variants.len()
+    );
+    let mut problems = Vec::new();
+    for function in DISPATCH_FUNCTIONS {
+        let chain = function_body(DISPATCH_SOURCE, function);
+        for (module, _) in DOMAIN_MODULES {
+            if !chain.contains(&format!("{module}::{function}(self)")) {
+                problems.push(format!(
+                    "{function}: dispatch chain does not consult `{module}`"
+                ));
+            }
+        }
+        let mut claims: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for (module, source) in DOMAIN_MODULES {
+            let body = function_body(source, function);
+            for variant in claimed_variants(body, &variants) {
+                claims.entry(variant).or_default().push(module);
+            }
+        }
+        for variant in &variants {
+            let early = DISPATCH_EARLY_RETURNS.contains(&(function, variant));
+            match claims.get(variant).map(Vec::as_slice) {
+                None if early => {}
+                None => problems.push(format!("{function}: `{variant}` is claimed by no domain")),
+                Some([_]) => {}
+                Some(modules) => problems.push(format!(
+                    "{function}: `{variant}` is claimed by several domains: {modules:?}"
+                )),
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "StackError domain coverage problems:\n{}",
+        problems.join("\n")
+    );
+}
+
+#[test]
+fn dispatch_fallback_matches_envelope_internal_error() {
+    let internal = crate::envelope::ApiError::for_status(http::StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(internal.code, crate::envelope::INTERNAL_ERROR_CODE);
+    assert_eq!(internal.message, crate::envelope::INTERNAL_ERROR_MESSAGE);
+}
+
+#[test]
+fn newly_claimed_variants_report_codes_and_sanitized_messages() {
+    let table_prefix = StackError::InvalidSupabaseTablePrefix {
+        prefix: "9bad".to_owned(),
+    };
+    assert_eq!(
+        table_prefix.error_code(),
+        "logging.supabase.invalid_table_prefix"
+    );
+    assert_eq!(table_prefix.http_status(), http::StatusCode::BAD_REQUEST);
+    assert_public_message_excludes(&table_prefix, &["9bad"]);
+
+    let cli = StackError::SupabaseCliFailed {
+        command: format!("supabase db push --workdir {CANARY_PATH}"),
+        status: "1".to_owned(),
+        stderr_tail: format!("token {CANARY_SECRET} rejected"),
+    };
+    assert_eq!(cli.error_code(), "logging.supabase.cli_failed");
+    assert_eq!(cli.http_status(), http::StatusCode::INTERNAL_SERVER_ERROR);
+    let message = assert_public_message_excludes(&cli, &[CANARY_PATH, CANARY_SECRET, "db push"]);
+    assert_eq!(message, "Supabase CLI setup failed");
+
+    let sandbox = StackError::SandboxFailed {
+        reason: format!("bind mount {CANARY_PATH}: permission denied"),
+    };
+    assert_eq!(sandbox.error_code(), "serve.sandbox_failed");
+    assert_eq!(
+        sandbox.http_status(),
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    let message = assert_public_message_excludes(&sandbox, &[CANARY_PATH, "permission denied"]);
+    assert_eq!(message, "sandbox setup failed");
+
+    let push = StackError::ProviderSecretNotPushDeliverable {
+        provider_id: "openrouter".to_owned(),
+        env_ref: "OPENROUTER_API_KEY".to_owned(),
+    };
+    assert_eq!(
+        push.error_code(),
+        "secrets.provider_secret_not_push_deliverable"
+    );
+    assert_eq!(push.http_status(), http::StatusCode::BAD_REQUEST);
+    let message = push.public_message();
+    assert!(message.contains("openrouter") && message.contains("OPENROUTER_API_KEY"));
+
+    let catalog = StackError::ProviderModelCatalog {
+        provider: "openrouter".to_owned(),
+        reason: format!("GET https://x.example/models?key={CANARY_SECRET} failed"),
+    };
+    assert_eq!(catalog.error_code(), "agent.provider_model_catalog_failed");
+    assert_eq!(catalog.http_status(), http::StatusCode::BAD_GATEWAY);
+    let message = assert_public_message_excludes(&catalog, &[CANARY_SECRET, "x.example"]);
+    assert_eq!(message, "provider `openrouter` model catalog fetch failed");
+
+    let array = StackError::ArrayTargetsFailed {
+        action: "start",
+        failed: 2,
+        total: 3,
+        summary: format!("target-b: spawn {CANARY_PATH} failed"),
+    };
+    assert_eq!(array.error_code(), "array.targets_failed");
+    assert_eq!(array.http_status(), http::StatusCode::INTERNAL_SERVER_ERROR);
+    let message = assert_public_message_excludes(&array, &[CANARY_PATH]);
+    assert_eq!(message, "array start failed for 2 of 3 target(s)");
+
+    let home = StackError::HomeNotIsolated {
+        path: PathBuf::from(CANARY_PATH),
+    };
+    assert_eq!(home.error_code(), "config.home_not_isolated");
+    assert_eq!(home.http_status(), http::StatusCode::INTERNAL_SERVER_ERROR);
+    assert_public_message_excludes(&home, &[CANARY_PATH]);
+
+    let egress = StackError::FixtureEgressRefused {
+        url: "https://api.example.com/v1".to_owned(),
+    };
+    assert_eq!(egress.error_code(), "config.fixture_egress_refused");
+    assert_eq!(
+        egress.http_status(),
+        http::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_public_message_excludes(&egress, &["api.example.com"]);
+}

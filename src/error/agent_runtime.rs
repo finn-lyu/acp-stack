@@ -28,6 +28,8 @@ pub(super) fn error_code(err: &StackError) -> Option<&'static str> {
         AgentTestFailed { .. } => "agent.test_failed",
         AgentSwitchConflict { .. } => "agent.switch_conflict",
         AgentSwitchJournalCorrupt { .. } => "agent.switch_journal_corrupt",
+        ProviderModelCatalog { .. } => "agent.provider_model_catalog_failed",
+        ArrayTargetsFailed { .. } => "array.targets_failed",
         _ => return None,
     })
 }
@@ -61,6 +63,17 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         AgentSwitchJournalCorrupt { .. } => {
             "the pending agent-switch journal is corrupt local state".to_owned()
         }
+        // `reason` carries upstream HTTP bodies and transport error text.
+        ProviderModelCatalog { provider, .. } => {
+            format!("provider `{provider}` model catalog fetch failed")
+        }
+        // `summary` concatenates per-target failure text that may include paths.
+        ArrayTargetsFailed {
+            action,
+            failed,
+            total,
+            ..
+        } => format!("array {action} failed for {failed} of {total} target(s)"),
         _ => return None,
     })
 }
@@ -75,8 +88,12 @@ pub(super) fn http_status(err: &StackError) -> Option<StatusCode> {
         AgentSpawnFailed { .. } | AgentApiRequest { .. } | AgentApiStatus { .. } => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
-        AgentSwitchJournalCorrupt { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-        AgentRequestFailed { .. } | AgentTestFailed { .. } => StatusCode::BAD_GATEWAY,
+        AgentSwitchJournalCorrupt { .. } | ArrayTargetsFailed { .. } => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        AgentRequestFailed { .. } | AgentTestFailed { .. } | ProviderModelCatalog { .. } => {
+            StatusCode::BAD_GATEWAY
+        }
         InferenceRequestFailed { status_code, .. } => {
             // 4xx means the upstream rejected the request on its own terms;
             // 5xx means the upstream itself failed.

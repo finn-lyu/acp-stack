@@ -3,6 +3,24 @@
 
 use super::*;
 
+use crate::envelope::{INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE};
+
+/// A variant no domain module claims degrades to a generic 500 envelope
+/// instead of panicking inside a request handler or init settlement. The
+/// source-scan test in `tests.rs` keeps this path unreachable in practice.
+fn unclaimed<T>(err: &StackError, function: &'static str, fallback: T) -> T {
+    debug_assert!(
+        false,
+        "StackError variant is claimed by no error domain in {function}: {err:?}"
+    );
+    tracing::warn!(
+        function,
+        variant = ?err,
+        "StackError variant is claimed by no error domain; reporting a generic internal error"
+    );
+    fallback
+}
+
 impl StackError {
     /// Dotted-namespace code for the HTTP error envelope.
     pub fn error_code(&self) -> &str {
@@ -27,7 +45,7 @@ impl StackError {
             .or_else(|| command::error_code(self))
             .or_else(|| permission::error_code(self))
             .or_else(|| auth_http::error_code(self))
-            .expect("StackError variant should be claimed by exactly one error domain")
+            .unwrap_or_else(|| unclaimed(self, "error_code", INTERNAL_ERROR_CODE))
     }
 
     /// Message safe to expose through the public HTTP API. It may interpolate
@@ -54,7 +72,7 @@ impl StackError {
             .or_else(|| command::public_message(self))
             .or_else(|| permission::public_message(self))
             .or_else(|| auth_http::public_message(self))
-            .expect("StackError variant should be claimed by exactly one error domain")
+            .unwrap_or_else(|| unclaimed(self, "public_message", INTERNAL_ERROR_MESSAGE.to_owned()))
     }
 
     pub fn remediation_hint(&self) -> Option<String> {
@@ -145,6 +163,6 @@ impl StackError {
             .or_else(|| command::http_status(self))
             .or_else(|| permission::http_status(self))
             .or_else(|| auth_http::http_status(self))
-            .expect("StackError variant should be claimed by exactly one error domain")
+            .unwrap_or_else(|| unclaimed(self, "http_status", StatusCode::INTERNAL_SERVER_ERROR))
     }
 }

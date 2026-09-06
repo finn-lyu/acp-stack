@@ -79,6 +79,37 @@ async fn config_validate_rejects_garbage_with_400() {
 }
 
 #[tokio::test]
+async fn config_validate_rejects_unsafe_supabase_table_prefix_with_envelope() {
+    let harness = ServerHarness::spawn().await;
+    let toml = include_str!("fixtures/valid-placebo-stack.toml")
+        .replace("enabled = false", "enabled = true")
+        .replace(
+            "[logging.supabase]",
+            "[logging.supabase]\ntable_prefix = \"9bad\"",
+        );
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/config/validate", harness.base_url))
+        .header("Authorization", format!("Bearer {SESSION_KEY}"))
+        .body(toml)
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(body["ok"], Value::Bool(false));
+    assert_eq!(
+        body["error"]["code"],
+        "logging.supabase.invalid_table_prefix"
+    );
+    assert!(
+        !body["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("9bad")
+    );
+}
+
+#[tokio::test]
 async fn config_import_dry_run_returns_metadata() {
     let harness = ServerHarness::spawn().await;
     let original_config = std::fs::read_to_string(&harness.config_path).expect("read config");

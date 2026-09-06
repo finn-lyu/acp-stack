@@ -58,7 +58,7 @@ JSON errors:
 
 ## Error Codes
 
-Errors carry a machine-readable `code`, a human-readable `message`, and structured `details`. Codes are dotted identifiers such as `config.invalid`, `request.invalid_param`, and `agent.inference_5xx`.
+Errors carry a machine-readable `code`, a human-readable `message`, and structured `details`. Codes are dotted identifiers such as `config.invalid`, `request.invalid_param`, and `agent.inference_5xx`. An internal error without a code mapping of its own is reported as `server.internal_error` with a generic message and HTTP 500.
 
 ### Sanitization
 

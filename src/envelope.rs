@@ -96,6 +96,11 @@ impl ApiError {
     }
 }
 
+/// Shared with `StackError` dispatch so a variant no error domain claims and a
+/// framework-generated 5xx produce the same envelope.
+pub(crate) const INTERNAL_ERROR_CODE: &str = "server.internal_error";
+pub(crate) const INTERNAL_ERROR_MESSAGE: &str = "internal server error";
+
 fn error_code_for_status(status: StatusCode) -> &'static str {
     match status {
         StatusCode::BAD_REQUEST => "request.invalid",
@@ -105,7 +110,7 @@ fn error_code_for_status(status: StatusCode) -> &'static str {
         StatusCode::METHOD_NOT_ALLOWED => "request.method_not_allowed",
         StatusCode::PAYLOAD_TOO_LARGE => "request.too_large",
         StatusCode::UNSUPPORTED_MEDIA_TYPE => "request.unsupported_media_type",
-        _ if status.is_server_error() => "server.internal_error",
+        _ if status.is_server_error() => INTERNAL_ERROR_CODE,
         _ => "request.rejected",
     }
 }
@@ -119,7 +124,7 @@ fn message_for_status(status: StatusCode) -> &'static str {
         StatusCode::METHOD_NOT_ALLOWED => "method not allowed",
         StatusCode::PAYLOAD_TOO_LARGE => "request body exceeds configured size limit",
         StatusCode::UNSUPPORTED_MEDIA_TYPE => "unsupported media type",
-        _ if status.is_server_error() => "internal server error",
+        _ if status.is_server_error() => INTERNAL_ERROR_MESSAGE,
         _ => "request rejected",
     }
 }

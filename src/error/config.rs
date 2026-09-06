@@ -9,6 +9,8 @@ pub(super) fn error_code(err: &StackError) -> Option<&'static str> {
     use StackError::*;
     Some(match err {
         HomeNotSet => "config.home_missing",
+        HomeNotIsolated { .. } => "config.home_not_isolated",
+        FixtureEgressRefused { .. } => "config.fixture_egress_refused",
         ConfigRead { .. } => "config.read_failed",
         ConfigWrite { .. } => "config.write_failed",
         ConfigInitialize { .. } => "config.initialize_failed",
@@ -49,6 +51,8 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
     use StackError::*;
     Some(match err {
         HomeNotSet => "HOME is not set".to_owned(),
+        HomeNotIsolated { .. } => "fixture build refuses a HOME outside the temp dir".to_owned(),
+        FixtureEgressRefused { .. } => "fixture build refuses a non-loopback URL".to_owned(),
         ConfigRead { .. } => "failed to read config".to_owned(),
         ConfigWrite { .. } => "failed to write config".to_owned(),
         ConfigInitialize { .. } => "failed to initialize config".to_owned(),
@@ -159,6 +163,8 @@ pub(super) fn http_status(err: &StackError) -> Option<StatusCode> {
         | InvalidEnvName { .. } => StatusCode::BAD_REQUEST,
         ConfigExists { .. } => StatusCode::CONFLICT,
         HomeNotSet
+        | HomeNotIsolated { .. }
+        | FixtureEgressRefused { .. }
         | ConfigRead { .. }
         | ConfigWrite { .. }
         | ConfigInitialize { .. }

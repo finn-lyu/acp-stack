@@ -11,6 +11,7 @@ pub(super) fn error_code(err: &StackError) -> Option<&'static str> {
         ServeIo { .. } => "serve.io_error",
         ServeRefusedAsRoot => "serve.refused_as_root",
         ServeRootRequiresAdminKey => "serve.root_requires_admin_key",
+        SandboxFailed { .. } => "serve.sandbox_failed",
         _ => return None,
     })
 }
@@ -24,6 +25,8 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
         ServeRootRequiresAdminKey => {
             "running as root requires a non-empty admin API key".to_owned()
         }
+        // `reason` carries mount paths and I/O text from the sandbox setup.
+        SandboxFailed { .. } => "sandbox setup failed".to_owned(),
         _ => return None,
     })
 }
@@ -31,9 +34,11 @@ pub(super) fn public_message(err: &StackError) -> Option<String> {
 pub(super) fn http_status(err: &StackError) -> Option<StatusCode> {
     use StackError::*;
     Some(match err {
-        ServeBind { .. } | ServeIo { .. } | ServeRefusedAsRoot | ServeRootRequiresAdminKey => {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        ServeBind { .. }
+        | ServeIo { .. }
+        | ServeRefusedAsRoot
+        | ServeRootRequiresAdminKey
+        | SandboxFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         _ => return None,
     })
 }
